@@ -1,0 +1,115 @@
+[project]
+name = "bildfinder"
+dynamic = ["version"]
+description = "Kleine Desktop-App, die Bilder auf dem Rechner sucht und in einer Liste anzeigt."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "tripledewey-ctrl" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Environment :: X11 Applications",
+    "Environment :: Win32 (MS Windows)",
+]
+dependencies = []
+
+[project.scripts]
+bildfinder = "bildfinder.app:main"
+
+[dependency-groups]
+dev = [
+    "bandit[toml]>=1.8",
+    "mypy>=1.15",
+    "pip-audit>=2.9",
+    "poethepoet>=0.34",
+    "pytest>=8.3",
+    "pytest-cov>=6.1",
+    "ruff>=0.11",
+    "zizmor>=1.9",
+]
+exe = ["pyinstaller>=6.13"]
+
+[build-system]
+requires = ["hatchling>=1.27", "hatch-vcs>=0.5"]
+build-backend = "hatchling.build"
+
+# Version kommt ausschliesslich aus Git-Tags (v1.2.0, v1.2.0rc1).
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bildfinder"]
+
+[tool.uv]
+default-groups = ["dev"]
+# Von uv verwaltete Python-Builds verwenden (enthalten tkinter, reproduzierbar).
+python-preference = "only-managed"
+# Neu bauen, wenn sich Commit oder Tags aendern (dynamische Version).
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
+
+# --------------------------------------------------------------------------
+# Tasks: alles wird ueber `uv run poe <task>` gesteuert.
+# --------------------------------------------------------------------------
+[tool.poe.tasks]
+fmt = { cmd = "ruff format src tests build_tools scripts", help = "Code formatieren" }
+lint-code = { cmd = "ruff check src tests build_tools scripts", help = "Ruff-Linter" }
+fmt-check = { cmd = "ruff format --check src tests build_tools scripts", help = "Formatierung pruefen" }
+lint-workflows = { cmd = "zizmor --offline --min-severity medium .github/workflows", help = "GitHub-Workflows auf Sicherheitsprobleme pruefen" }
+lint = { sequence = ["lint-code", "fmt-check", "lint-workflows"], help = "Alle Linter" }
+typecheck = { cmd = "mypy", help = "Statische Typpruefung" }
+test = { cmd = "pytest", help = "Tests mit Coverage" }
+sast = { cmd = "bandit -c pyproject.toml -r src scripts build_tools", help = "Bandit (Static Application Security Testing)" }
+audit-export = { cmd = "uv export --quiet --frozen --all-groups --no-emit-project --format requirements.txt -o build/requirements-audit.txt", help = "Lockfile fuer Audit exportieren" }
+audit-deps = { cmd = "pip-audit --strict --disable-pip --require-hashes -r build/requirements-audit.txt", help = "Abhaengigkeiten auf CVEs pruefen" }
+audit = { sequence = ["audit-export", "audit-deps"], help = "Dependency-Audit (pip-audit)" }
+lock-check = { cmd = "uv lock --check", help = "Pruefen, ob uv.lock aktuell ist" }
+security = { sequence = ["sast", "audit", "lint-workflows"], help = "Alle Sicherheitschecks" }
+check = { sequence = ["lock-check", "lint", "typecheck", "test", "security"], help = "Kompletter lokaler CI-Lauf" }
+build = { cmd = "uv build", help = "Wheel + sdist bauen" }
+build-exe = { cmd = "python build_tools/build_exe.py", help = "Standalone-Exe mit PyInstaller bauen" }
+app = { cmd = "python -m bildfinder", help = "App starten" }
+configure-github = { cmd = "python scripts/configure_github.py", help = "Sicherheits- und Branch-Regeln im GitHub-Repo setzen (Admin-Token)" }
+
+# --------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "PTH", "N"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bildfinder", "build_exe"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+files = ["src", "tests", "build_tools", "scripts"]
+strict = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["PyInstaller.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["build_tools"]
+addopts = "-ra --strict-markers --cov=bildfinder --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+branch = true
+source = ["bildfinder"]
+omit = ["*/bildfinder/gui.py"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+
+[tool.bandit]
+exclude_dirs = ["tests"]

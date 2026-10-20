@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "release/**"]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  UV_FROZEN: "1"
+  PYTHONUTF8: "1"
+
+jobs:
+  branch-policy:
+    name: branch-policy
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Branch-Namen und Ziel pruefen
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          echo "PR: ${HEAD_REF} -> ${BASE_REF}"
+          if [[ ! "${HEAD_REF}" =~ ^(feature|fix|hotfix|chore|docs|refactor|ci|deps|dependabot|release)/[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::Branch '${HEAD_REF}' passt nicht zum Schema <typ>/<beschreibung> (feature, fix, hotfix, chore, docs, refactor, ci, deps, release)."
+            exit 1
+          fi
+          case "${BASE_REF}" in
+            main) ;;
+            release/*)
+              if [[ ! "${HEAD_REF}" =~ ^(fix|hotfix|dependabot|deps)/ ]]; then
+                echo "::error::In Release-Candidate-Branches duerfen nur fix/*, hotfix/* oder deps/* gemergt werden."
+                exit 1
+              fi ;;
+            *) echo "::error::PRs sind nur gegen main oder release/* erlaubt."; exit 1 ;;
+          esac
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+      - run: uv run poe lock-check
+      - run: uv run poe lint
+      - run: uv run poe typecheck
+
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+          python-version: ${{ matrix.python }}
+      - run: uv run poe test
+      - if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: coverage.xml
+          retention-days: 7
+
+  build:
+    name: build (${{ matrix.os }})
+    needs: [lint, test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+      - name: Wheel + sdist
+        if: runner.os == 'Linux'
+        run: uv run poe build
+      - name: Exe mit PyInstaller bauen
+        run: uv run --group exe poe build-exe
+      - name: Smoke-Test der Exe
+        shell: bash
+        run: |
+          exe=$(ls dist/bildfinder-*-*-* | head -n1)
+          mkdir -p smoke && printf 'x' > smoke/test.png
+          "./${exe}" --version
+          "./${exe}" --cli smoke
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bildfinder-${{ runner.os }}
+          path: dist/*
+          retention-days: 14
+          if-no-files-found: error
+
+  ci-ok:
+    # Einziger Pflicht-Check in den Rulesets: fasst alle Jobs zusammen.
+    name: ci-ok
+    if: always()
+    needs: [branch-policy, lint, test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ergebnis pruefen
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Ergebnisse: ${RESULTS}"
+          for r in ${RESULTS}; do
+            if [[ "$r" != "success" && "$r" != "skipped" ]]; then exit 1; fi
+          done

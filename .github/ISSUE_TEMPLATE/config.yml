@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Sicherheitsluecke melden
+    url: https://github.com/tripledewey-ctrl/template-python/security/advisories/new
+    about: Bitte Sicherheitsprobleme nur privat melden.
