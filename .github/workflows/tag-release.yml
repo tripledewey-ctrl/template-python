@@ -1,0 +1,39 @@
+name: Release taggen
+
+# Legt einen Release-Tag auf der Spitze von release/X.Y an und startet die
+# Release-Pipeline - ohne lokales Git. Aufruf: Actions -> "Release taggen" -> Run workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag, z.B. v1.2.0rc1 (Release Candidate) oder v1.2.0 (final)"
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Tag anlegen und Release starten
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${TAG}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(rc[0-9]+)?$ ]]; then
+            echo "::error::Tag '${TAG}' ungueltig. Erlaubt: vX.Y.Z oder vX.Y.ZrcN"
+            exit 1
+          fi
+          branch="release/${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+          sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" --jq .object.sha)"
+          echo "Tagge ${branch} @ ${sha} als ${TAG}"
+          gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/${TAG}" -f sha="${sha}" > /dev/null
+          # Mit GITHUB_TOKEN angelegte Tags loesen keine push-Workflows aus,
+          # workflow_dispatch dagegen schon.
+          gh workflow run release.yml --repo "${GITHUB_REPOSITORY}" --ref "${TAG}"
+          echo "Release-Pipeline fuer ${TAG} (${branch} @ ${sha}) gestartet." >> "${GITHUB_STEP_SUMMARY}"

@@ -28,6 +28,10 @@ direkte Pushes bleiben auch fuer sie gesperrt.
    git tag -a v1.2.0rc1 -m "Bildfinder 1.2.0rc1" && git push origin v1.2.0rc1
    ```
    → `release.yml` baut ein **Pre-Release** mit Exe.
+
+   **Ohne lokales Git:** Actions → *Release taggen* → *Run workflow* → Tag eingeben
+   (z.B. `v1.2.0rc1`). Der Workflow taggt die Spitze von `release/1.2` und startet
+   die Release-Pipeline. (Das Tag-Ruleset erlaubt dafuer GitHub Actions als Ausnahme.)
 3. **Fehler im RC**: `fix/*` von `release/1.2`, PR nach `release/1.2`, danach
    `release/1.2` per PR nach `main` zurueckmergen. Neuer Tag `v1.2.0rc2`.
 4. **Finales Release**: den getesteten RC-Commit erneut taggen:

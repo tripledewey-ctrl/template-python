@@ -51,6 +51,7 @@ Versionsnummer im Code.
 | `ci.yml` | PR, Push auf `main`/`release/**` | Branch-Namensregeln, Lint, mypy, Tests (Windows + Linux, Py 3.12/3.13), Wheel + Exe als Artefakt, Pflicht-Check **`ci-ok`** |
 | `security.yml` | PR, Push, woechentlich | bandit, pip-audit, zizmor, CodeQL (Python + Actions), OSV-Scanner, gitleaks, Dependency Review, Pflicht-Check **`security-ok`** |
 | `scorecard.yml` | Push `main`, woechentlich | OpenSSF Scorecard |
+| `tag-release.yml` | manuell (Button in Actions) | Legt Tag auf `release/X.Y` an und startet `release.yml` |
 | `release.yml` | Tag `v*` | Tag-/Branch-Pruefung, CI, Exe-Build, SHA256, SLSA-Provenance, GitHub Release |
 | `dependabot.yml` | woechentlich | Updates fuer `uv.lock` und Actions (7 Tage Cooldown) |
 

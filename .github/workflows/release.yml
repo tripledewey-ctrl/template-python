@@ -3,9 +3,11 @@ name: Release
 # Ausgeloest durch Tags:
 #   v1.2.0rc1  -> Pre-Release (Release Candidate), nur von release/1.2
 #   v1.2.0     -> finales Release, muss auf denselben Commit zeigen wie ein RC-Tag v1.2.0rcN
+# workflow_dispatch wird von tag-release.yml mit --ref <tag> aufgerufen.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions: {}
 
@@ -34,8 +36,13 @@ jobs:
         id: check
         env:
           TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
           set -euo pipefail
+          if [[ "${REF_TYPE}" != "tag" ]]; then
+            echo "::error::Release nur von einem Tag aus starten (aktuell: ${REF_TYPE})."
+            exit 1
+          fi
           if [[ ! "${TAG}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(rc[0-9]+)?$ ]]; then
             echo "::error::Tag '${TAG}' ungueltig. Erlaubt: vX.Y.Z oder vX.Y.ZrcN"
             exit 1
