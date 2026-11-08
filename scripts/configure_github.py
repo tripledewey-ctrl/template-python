@@ -73,17 +73,18 @@ def step(name: str, func: Any, *args: Any) -> bool:
     return True
 
 
-def apply_rulesets(gh: GitHub) -> None:
+def apply_rulesets(gh: GitHub) -> bool:
     try:
         existing = {r["name"]: r["id"] for r in gh.call("GET", "/rulesets") or []}
     except urllib.error.HTTPError as exc:
         print(f"  FEHLER  Rulesets lesen: HTTP {exc.code}")
-        return
+        return False
+    ok = True
     for file in sorted(RULESETS_DIR.glob("*.json")):
         ruleset = json.loads(file.read_text(encoding="utf-8"))
         name = ruleset["name"]
         if name in existing:
-            step(
+            ok &= step(
                 f"Ruleset aktualisieren: {name}",
                 gh.call,
                 "PUT",
@@ -91,7 +92,8 @@ def apply_rulesets(gh: GitHub) -> None:
                 ruleset,
             )
         else:
-            step(f"Ruleset anlegen: {name}", gh.call, "POST", "/rulesets", ruleset)
+            ok &= step(f"Ruleset anlegen: {name}", gh.call, "POST", "/rulesets", ruleset)
+    return ok
 
 
 def configure_release_environment(gh: GitHub) -> bool:
@@ -166,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
     ]
     results.append(configure_release_environment(gh))
-    apply_rulesets(gh)
+    results.append(apply_rulesets(gh))
     return 0 if all(results) else 1
 
 
